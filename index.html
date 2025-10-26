@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>N64WASM - Off Road Challenge</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        background: #1a1a1a;
+        color: #fff;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+      }
+
+      #app {
+        width: 100%;
+        max-width: 1280px;
+        padding: 2rem;
+        text-align: center;
+      }
+
+      h1 {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+
+      #canvas {
+        display: block;
+        margin: 2rem auto;
+        background: #000;
+        border: 2px solid #667eea;
+        border-radius: 8px;
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+      }
+
+      #status {
+        font-size: 1.1rem;
+        margin: 1rem 0;
+        color: #a0a0a0;
+      }
+
+      #error {
+        background: #ff4444;
+        color: #fff;
+        padding: 1rem;
+        border-radius: 8px;
+        margin: 1rem 0;
+        display: none;
+      }
+
+      #error.show {
+        display: block;
+      }
+
+      .controls {
+        margin: 2rem 0;
+        font-size: 0.9rem;
+        color: #a0a0a0;
+      }
+
+      .controls table {
+        margin: 1rem auto;
+        border-collapse: collapse;
+      }
+
+      .controls td {
+        padding: 0.5rem 1rem;
+        border-bottom: 1px solid #333;
+      }
+
+      .controls td:first-child {
+        text-align: right;
+        font-weight: bold;
+        color: #667eea;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <h1>N64WASM</h1>
+      <p id="status">Initializing emulator...</p>
+      <canvas id="canvas" width="640" height="480"></canvas>
+      <div id="error"></div>
+
+      <div class="controls">
+        <h3>Controls</h3>
+        <table>
+          <tr>
+            <td>Arrow Keys</td>
+            <td>D-Pad</td>
+          </tr>
+          <tr>
+            <td>Z</td>
+            <td>A Button</td>
+          </tr>
+          <tr>
+            <td>X</td>
+            <td>B Button</td>
+          </tr>
+          <tr>
+            <td>A</td>
+            <td>L Trigger</td>
+          </tr>
+          <tr>
+            <td>S</td>
+            <td>R Trigger</td>
+          </tr>
+          <tr>
+            <td>Enter</td>
+            <td>Start</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

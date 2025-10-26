@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.local
+
+# Editor directories
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# ROM files (do NOT commit ROMs)
+*.z64
+*.n64
+*.v64
+
+# WASM build artifacts
+public/core.js
+public/core.wasm
+public/core.worker.js
+public/core.data
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*

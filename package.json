@@ -1,0 +1,19 @@
+{
+  "name": "web64",
+  "version": "1.0.0",
+  "description": "N64 emulator in the browser using WebAssembly",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "keywords": ["n64", "emulator", "webassembly", "wasm"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^24.9.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.12"
+  }
+}

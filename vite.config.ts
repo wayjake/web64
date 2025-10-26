@@ -12,14 +12,15 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    exclude: ['core.js'], // Exclude WebAssembly module from optimization
+    exclude: ['n64wasm.js'], // Exclude WebAssembly module from optimization
   },
+  assetsInclude: ['**/*.wasm', '**/*.data'], // Ensure WASM and data files are treated as assets
   build: {
     target: 'es2020',
     rollupOptions: {
       output: {
         manualChunks: {
-          emulator: ['./public/core.js'],
+          emulator: ['./public/n64wasm.js'],
         },
       },
     },

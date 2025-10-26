@@ -15,6 +15,7 @@ export interface EmscriptenModule {
   // Core functions (will be populated by Emscripten)
   ccall?: (name: string, returnType: string, argTypes: string[], args: any[]) => any;
   cwrap?: (name: string, returnType: string, argTypes: string[]) => Function;
+  callMain?: (args: string[]) => number;
 
   // Custom exports from our C code
   _add?: (a: number, b: number) => number;
@@ -67,18 +68,33 @@ export async function loadEmulatorCore(canvas: HTMLCanvasElement): Promise<Emscr
       canvas,
       onRuntimeInitialized: function() {
         console.log('[Loader] Emulator core initialized');
-        resolve((window as any).Module as EmscriptenModule);
+
+        // Give a small delay to ensure FS is fully set up
+        setTimeout(() => {
+          const mod = (window as any).Module as EmscriptenModule;
+
+          // Also make FS available globally for the emulator
+          if (mod.FS) {
+            (window as any).FS = mod.FS;
+          }
+
+          // Focus the canvas so it can receive keyboard input
+          canvas.focus();
+          canvas.setAttribute('tabindex', '0');
+
+          resolve(mod);
+        }, 100);
       }
     };
 
     try {
       // Load the Emscripten-generated JS file via script tag
       const script = document.createElement('script');
-      script.src = '/core.js';
+      script.src = '/n64wasm.js';
       script.async = true;
 
       script.onerror = (error) => {
-        reject(new Error(`Failed to load core.js: ${error}`));
+        reject(new Error(`Failed to load n64wasm.js: ${error}`));
       };
 
       document.head.appendChild(script);

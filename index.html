@@ -94,7 +94,7 @@
     <div id="app">
       <h1>N64WASM</h1>
       <p id="status">Initializing emulator...</p>
-      <canvas id="canvas" width="640" height="480"></canvas>
+      <canvas id="canvas" width="640" height="480" tabindex="0"></canvas>
       <div id="error"></div>
 
       <div class="controls">
@@ -127,6 +127,7 @@
         </table>
       </div>
     </div>
+    <!-- Main module will load input_controller.js dynamically -->
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

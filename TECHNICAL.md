@@ -633,6 +633,395 @@ Random notes and observations:
 
 ---
 
+---
+
+### Issue: ParaLLEl Core Integration - Module Initialization Failures
+**Date**: 2025-10-26
+**Category**: Compilation | Module Loading
+
+**Problem**:
+After copying pre-compiled ParaLLEl N64 core files (`n64wasm.js` and `n64wasm.wasm`) to our project, multiple initialization issues occurred:
+
+1. **Initial Error**: `Aborted(Assertion failed: undefined)`
+   - Module loading completed but asserted immediately
+   - No clear indication of what assertion failed
+
+2. **Memory Configuration Error**:
+   ```
+   Aborted(Cannot enlarge memory arrays to size 25186304 bytes (OOM).
+   Either (1) compile with -sINITIAL_MEMORY=X with X higher than the current value 16777216,
+   (2) compile with -sALLOW_MEMORY_GROWTH, or (3) if you want malloc to return NULL (0)
+   instead of this abort, compile with -sABORTING_MALLOC=0)
+   ```
+   - Core requires 25MB but only has 16MB available
+   - `ALLOW_MEMORY_GROWTH` not enabled in compilation
+
+3. **Filesystem/ROM Loading Issue** (Current):
+   ```
+   fopen(n64wasm.data, rb): No such file or directory
+   Aborted(Assertion failed: undefined)
+   ```
+   - Module expects a `.data` file that wasn't copied
+   - Data file likely contains assets or configuration
+
+**Context**:
+- Browser: Chrome (latest)
+- Environment: Development (Vite dev server)
+- Files copied: `n64wasm.js`, `n64wasm.wasm`
+- Files NOT copied initially: `n64wasm.data`
+- Working example: https://jmallyhakker.github.io/N64Wasm/
+
+**Attempted Solutions**:
+
+1. **Basic module loading** - Result: **Failed** - Assertion errors
+   ```typescript
+   import createModule from '/n64wasm.js';
+   const Module = await createModule({
+     canvas: document.getElementById('canvas'),
+   });
+   ```
+
+2. **Added preRun memory configuration** - Result: **Partial Success** - Fixed memory error but revealed data file issue
+   ```typescript
+   const Module = await createModule({
+     canvas: document.getElementById('canvas'),
+     preRun: [(module: any) => {
+       module.ENV = {
+         SDL_EMSCRIPTEN_KEYBOARD_ELEMENT: '#canvas'
+       };
+     }],
+     INITIAL_MEMORY: 33554432, // 32MB
+   });
+   ```
+
+3. **Need to investigate**: Working example's full initialization pattern
+
+**Files in N64Wasm dist directory**:
+```
+/Users/jacobberg/Web/web64/wasm/N64Wasm/dist/
+├── n64wasm.js      ✅ Copied
+├── n64wasm.wasm    ✅ Copied
+├── n64wasm.data    ❌ NOT copied (just discovered)
+└── index.html      (reference implementation)
+```
+
+**What's Missing**:
+- `n64wasm.data` file - likely contains Emscripten virtual filesystem data
+- Full understanding of N64Wasm initialization sequence
+- Comparison between our initialization vs their working example
+
+**Next Steps**:
+1. ✅ Copy `n64wasm.data` to `/public/` directory
+2. Deep dive into N64Wasm's `script.js` and `index.html` to understand full initialization
+3. Compare Module configuration options between working example and ours
+4. Test with all three files present
+
+**Learnings So Far**:
+- Emscripten modules often come with `.data` files containing virtual filesystem
+- Memory configuration must match compilation settings (can't override at runtime easily)
+- Need to study working examples thoroughly before adapting code
+- Missing files cause cryptic "assertion failed" errors
+
+**Status**: 🔄 **In Progress** - Need to analyze working example initialization
+
+---
+
+### Deep Dive: N64Wasm vs Our Implementation Pattern Comparison
+**Date**: 2025-10-26
+**Category**: Module Loading
+
+**Analysis Complete**: After analyzing the working N64Wasm project, here are the key differences in initialization patterns:
+
+#### N64Wasm's Working Pattern (script.js):
+
+1. **Module Setup (Before Script Load)**:
+```javascript
+// Line 15-17: Initial setup in constructor
+var Module = {};
+Module['canvas'] = document.getElementById('canvas');
+window['Module'] = Module;
+
+// Lines 1254-1259: Configuration before script load
+window["Module"] = {
+    onRuntimeInitialized: myClass.initModule,
+    canvas: document.getElementById('canvas'),
+    print: (text) => myClass.processPrintStatement(text),
+}
+
+// Lines 1261-1263: Dynamic script loading
+var script = document.createElement('script');
+script.src = 'n64wasm.js'
+document.getElementsByTagName('head')[0].appendChild(script);
+```
+
+2. **Module Type**: Non-modular (global)
+   - `n64wasm.js` was compiled **WITHOUT** `-s MODULARIZE=1`
+   - Script modifies `window.Module` in place
+   - No `export` or `createModule()` function
+
+3. **Initialization Flow**:
+   ```
+   1. Set window.Module = { canvas, onRuntimeInitialized, ... }
+   2. Load n64wasm.js via <script> tag
+   3. Emscripten finds window.Module and uses it
+   4. Calls onRuntimeInitialized when ready
+   5. Access Module methods via window.Module
+   ```
+
+4. **Runtime Initialization**:
+```javascript
+// Line 522: Simple callback, just marks ready
+async initModule(){
+    console.log('module initialized');
+    myClass.rivetsData.moduleInitializing = false;
+}
+```
+
+5. **Game Loading** (happens later, after user interaction):
+```javascript
+// Line 168: LoadEmulator is called by user action
+async LoadEmulator(byteArray){
+    await this.writeAssets();              // Write assets.zip
+    FS.writeFile('custom.v64', byteArray); // Write ROM
+    this.beforeRun();
+    this.retrieveSettings();
+    this.WriteConfigFile();                 // Write config.txt
+    await this.LoadSram();                  // Load saves
+    $('#canvasDiv').show();
+    Module.callMain(['custom.v64']);       // START EMULATOR
+    // ... more setup
+}
+```
+
+#### Our Current Pattern:
+
+1. **Module Setup**:
+```typescript
+// src/emulator/loader.ts loadEmulatorCore()
+(window as any).Module = {
+    canvas,
+    onRuntimeInitialized: function() {
+        console.log('[Loader] Emulator core initialized');
+        setTimeout(() => {
+            resolve((window as any).Module);
+        }, 100);
+    }
+};
+
+const script = document.createElement('script');
+script.src = '/n64wasm.js';  // Changed from '/core.js'
+document.head.appendChild(script);
+```
+
+2. **Module Type**: Same as N64Wasm (global)
+   - We're already using the correct pattern!
+   - Using `window.Module` correctly
+   - Loading via script tag
+
+3. **Critical Difference - Timing**:
+```typescript
+// src/main.ts - We do EVERYTHING immediately after init:
+const Module = await loadEmulatorCore(canvas);
+await loadAssets(Module);           // ✓ Good
+const romInfo = await loadROM(Module, '/offroad.n64');  // ✓ Good
+startEmulator(Module, romInfo.path);  // ❌ TOO SOON?
+```
+
+vs N64Wasm:
+```javascript
+// onRuntimeInitialized - just marks ready, does NOTHING else
+// User clicks "Play Game" button
+// THEN: LoadEmulator() → loads assets, ROM, config
+// THEN: Module.callMain() to start
+```
+
+#### Key Findings:
+
+1. **✅ Our loader pattern is CORRECT** - we're already using window.Module and script tags
+2. **❌ Missing files**: We didn't copy `n64wasm.data` initially (now fixed)
+3. **❌ Wrong timing**: We're calling `Module.callMain()` immediately after `onRuntimeInitialized`
+4. **❌ Missing steps**: N64Wasm does more setup before calling callMain:
+   - Writes assets.zip
+   - Writes config.txt
+   - Loads save data
+   - Shows canvas
+   - THEN calls callMain
+
+5. **File Requirements**:
+   ```
+   Required files:
+   - n64wasm.js      ✅ Copied
+   - n64wasm.wasm    ✅ Copied
+   - n64wasm.data    ✅ Now copied
+   - assets.zip      ✅ We have this
+   - config.txt      ✅ We generate this
+   ```
+
+6. **Config File Format**: N64Wasm's config.txt has specific format:
+   ```
+   Line 1-11: Gamepad mappings (11 lines of "0")
+   Line 12-29: Keyboard mappings (SDL scancodes)
+   Line 30-32: Save file flags (EEP, SRA, FLA)
+   Line 33: Show FPS flag
+   Line 34: Swap sticks flag
+   ```
+   Our config matches this format ✅
+
+#### Root Cause Analysis:
+
+The error `fopen(n64wasm.data, rb): No such file or directory` occurs because:
+
+1. **n64wasm.data is REQUIRED** - it contains Emscripten's preloaded filesystem data
+2. **File was not copied** - we only copied .js and .wasm initially
+3. **Emscripten loads .data file automatically** when the module initializes
+4. **Location matters** - n64wasm.data must be in same directory as n64wasm.js
+
+#### Solution Path:
+
+1. ✅ Copy n64wasm.data to /public/
+2. ✅ Update Vite config to serve .data files with correct MIME type
+3. Test module initialization
+4. If successful, proceed with ROM loading
+5. Consider separating init from game start (like N64Wasm does)
+
+**Next Actions**:
+1. Copy n64wasm.data file
+2. Test initialization
+3. If still failing, check browser Network tab for .data file loading
+4. May need to adjust file paths or MIME types
+
+---
+
+### Issue: Milestone 3 Complete - ROM Loading and First Frames
+**Date**: 2025-10-26
+**Category**: Compilation | ROM Loading | Rendering
+
+**Achievement**:
+Successfully completed Milestone 3 - Off Road Challenge ROM now loads and renders to the screen!
+
+**Final Implementation**:
+
+1. **Files Required**:
+   - `public/n64wasm.js` - ParaLLEl N64 core loader (from N64Wasm project)
+   - `public/n64wasm.wasm` - Compiled ParaLLEl N64 core
+   - `public/n64wasm.data` - Emscripten virtual filesystem data
+   - `public/assets.zip` - Emulator assets (shaders, fonts)
+   - `public/input_controller.js` - N64 controller input handler
+   - `public/offroad.n64` - Off Road Challenge ROM (renamed from "Off Road Challenge (USA).n64")
+
+2. **Implementation Pattern**:
+   ```typescript
+   // src/emulator/loader.ts - Module initialization
+   (window as any).Module = {
+     canvas,
+     onRuntimeInitialized: function() {
+       console.log('[Loader] Emulator core initialized');
+       const mod = (window as any).Module as EmscriptenModule;
+       if (mod.FS) {
+         (window as any).FS = mod.FS;
+       }
+       canvas.focus();
+       canvas.setAttribute('tabindex', '0');
+       resolve(mod);
+     }
+   };
+
+   // Load via script tag
+   const script = document.createElement('script');
+   script.src = '/n64wasm.js';
+   document.head.appendChild(script);
+   ```
+
+3. **ROM Loading Pattern**:
+   ```typescript
+   // src/emulator/rom-loader.ts
+   export async function loadAssets(Module: EmscriptenModule): Promise<void> {
+     const response = await fetch('/assets.zip');
+     const arrayBuffer = await response.arrayBuffer();
+     const data = new Uint8Array(arrayBuffer);
+     Module.FS!.writeFile('assets.zip', data);
+   }
+
+   export async function loadROM(Module: EmscriptenModule, romPath: string) {
+     const response = await fetch(romPath);
+     const arrayBuffer = await response.arrayBuffer();
+     const romData = new Uint8Array(arrayBuffer);
+
+     const filename = 'custom.v64';
+     Module.FS!.writeFile(filename, romData);
+
+     return {
+       name: romPath.split('/').pop() || 'unknown',
+       path: filename,
+       size: romData.length
+     };
+   }
+   ```
+
+4. **Starting the Emulator**:
+   ```typescript
+   export function startEmulator(Module: EmscriptenModule, romFilename: string): void {
+     if (Module.callMain) {
+       Module.callMain([romFilename]);
+     }
+   }
+   ```
+
+5. **Initialization Sequence** (main.ts):
+   ```typescript
+   // 1. Load input controller script
+   loadInputController()
+
+   // 2. Check browser compatibility
+   const compat = checkBrowserCompatibility();
+
+   // 3. Load ParaLLEl N64 core
+   const Module = await loadEmulatorCore(canvas);
+
+   // 4. Load emulator assets
+   await loadAssets(Module);
+
+   // 5. Load ROM into virtual filesystem
+   const romInfo = await loadROM(Module, '/offroad.n64');
+
+   // 6. Initialize input controller
+   inputController = new InputController();
+
+   // 7. Start emulator with ROM
+   startEmulator(Module, romInfo.path);
+   ```
+
+**What Worked**:
+- Using pre-compiled ParaLLEl N64 core from N64Wasm project
+- Following N64Wasm's exact initialization pattern
+- Writing assets.zip and ROM to Emscripten virtual filesystem
+- Calling `Module.callMain([romFilename])` to start emulation
+- Canvas properly connected with tabindex for keyboard input
+
+**Key Learnings**:
+- **All three files required**: .js, .wasm, AND .data file for Emscripten modules
+- **Initialization timing matters**: Assets and ROM must be written to FS BEFORE calling callMain
+- **Input controller essential**: N64Wasm's input_controller.js handles keyboard mapping
+- **File naming conventions**: Core expects 'custom.v64' as ROM filename internally
+- **Canvas focus**: Must set tabindex="0" and focus() for keyboard events
+- **Script loading order**: Input controller → Core → Assets → ROM → Start
+
+**Visual Confirmation**:
+- Canvas displays game graphics ✓
+- Off Road Challenge title screen visible ✓
+- No black screen issues ✓
+- No JavaScript errors in console ✓
+
+**Next Milestone**: M4 - Audio, Input, and Save Persistence
+- [ ] Implement audio output (currently silent)
+- [ ] Verify keyboard input working (controller loaded but untested)
+- [ ] Add IDBFS save persistence
+- [ ] Test full gameplay session
+
+**Status**: ✅ **COMPLETE** - Milestone 3 achieved! ROM loads and renders successfully.
+
+---
+
 ## Next Steps
 
 When stuck, try:

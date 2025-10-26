@@ -49,6 +49,152 @@ Key takeaways or things to remember for future.
 
 ## Known Issues & Solutions
 
+### Issue: Emscripten Compiler Crash on debugger.c
+**Date**: 2025-10-26
+**Category**: Compilation
+
+**Problem**:
+Emscripten's clang compiler (version 22.0.0git) crashes with exit code 133 when compiling `mupen64plus-core/src/api/debugger.c`. The crash occurs during code generation phase in the AsmPrinter::emitGlobalVariable function.
+
+**Context**:
+- Platform: macOS (Darwin 23.6.0)
+- Emscripten: 4.0.18
+- Error: `clang: error: clang frontend command failed with exit code 133`
+- Build command: `make platform=emscripten GLES=1`
+
+**Attempted Solutions**:
+1. **Reduce optimization level** (`DEBUG=1` for `-O0` instead of `-O3`) - Result: **Failed** - Same crash occurred
+2. **Different compiler flags** - Result: **Failed** - Crash persisted with various flag combinations
+
+**What Worked**:
+Excluded the debugger.c file from the build by commenting it out in `Makefile.common` line 41. The debugger functionality is not required for the MVP emulator to run games.
+
+**Code/Config Changes**:
+```diff
+# Makefile.common line 37-42
+SOURCES_C = \
+	$(CORE_DIR)/src/asm_defines/asm_defines.c \
+	$(CORE_DIR)/src/api/callbacks.c \
+	$(ROOT_DIR)/custom/mupen64plus-core/api/config.c \
+-	$(CORE_DIR)/src/api/debugger.c \
+	$(CORE_DIR)/src/api/frontend.c \
+```
+
+**Learnings**:
+- Emscripten's LLVM-based compiler can have crashes on complex C codebases
+- The N64 emulator core's debugger module is optional for basic emulation
+- When hitting compiler crashes, check if the problematic module is actually needed for the MVP
+- The "motorcycle not car" approach applies here - ship without debugger, add it later if needed
+
+---
+
+### Issue: Emscripten Compiler Crash on main.c (BLOCKER)
+**Date**: 2025-10-26
+**Category**: Compilation
+
+**Problem**:
+Emscripten's clang compiler (version 22.0.0git / 4.0.18) consistently crashes with exit code 133 when compiling `mupen64plus-core/src/main/main.c`. The crash occurs in the same location as debugger.c - during code generation in `AsmPrinter::emitGlobalVariable`. Unlike debugger.c which is optional, main.c is a critical core file and cannot simply be excluded.
+
+**Context**:
+- Platform: macOS (Darwin 23.6.0)
+- Emscripten: 4.0.18 (Homebrew)
+- Target: wasm32-unknown-emscripten
+- Error: `clang: error: clang frontend command failed with exit code 133`
+- File: `mupen64plus-core/src/main/main.c`
+
+**Attempted Solutions**:
+1. **Excluded debugger.c** - Result: **Partial** - Fixed that specific file but main.c still crashes
+2. **Reduce optimization to `-O2`** - Result: **Failed** - Still crashes in same location
+3. **Reduce optimization to `-O0` (DEBUG=1)** - Result: **Failed** - Crashes regardless of optimization level
+
+**What Didn't Work**:
+Cannot compile Mupen64Plus-Next core with current Emscripten version due to persistent compiler bugs. The crashes appear to be in Emscripten's LLVM backend when generating WebAssembly code for certain large/complex C files.
+
+**Next Steps / Alternatives**:
+1. **Try different Emscripten version** - Older/newer versions might not have this bug
+2. **Use pre-compiled WASM cores** - RetroArch/libretro might have pre-built WASM cores
+3. **Try different N64 core** - Look for simpler N64 emulators (e.g., simple64, n64js)
+4. **Compile on different platform** - Try Linux or use GitHub Actions with different Emscripten version
+5. **Report bug to Emscripten** - This appears to be a legitimate compiler bug
+
+**Learnings**:
+- Emscripten is still evolving and can have bugs with complex C codebases
+- Large emulator projects may need specific Emscripten versions to compile successfully
+- The libretro Mupen64Plus-Next core, while feature-rich, may be too complex for current Emscripten
+- MVP approach: might need to start with a simpler core or use pre-built binaries
+
+**Status**: ⚠️ **BLOCKED** - Cannot proceed with this approach without resolving compiler crashes
+
+**Resolution**: See alternative approach using ParaLLEl N64 core below.
+
+---
+
+### Solution: Using Pre-Compiled ParaLLEl N64 Core
+**Date**: 2025-10-26
+**Category**: Compilation
+
+**Problem**:
+After hitting a blocker with Mupen64Plus-Next compilation crashes, needed to find an alternative N64 emulator core that's already compiled to WebAssembly.
+
+**Research Findings**:
+
+1. **RetroArch Web Player**:
+   - RetroArch has a web player but currently does NOT support Mupen64Plus N64 core
+   - Website: https://web.libretro.com/
+   - Buildbot at https://buildbot.libretro.com/nightly/emscripten/ contains full RetroArch builds (~750MB 7z archives)
+   - Individual cores are bundled inside these archives, not available separately
+
+2. **N64Wasm Project** (SOLUTION FOUND):
+   - Repository: https://github.com/jmallyhakker/N64Wasm
+   - Live demo: https://jmallyhakker.github.io/N64Wasm/
+   - Uses **ParaLLEl N64 core** from libretro (https://github.com/libretro/parallel-n64)
+   - Successfully compiled with **Emscripten 2.0.7** (older version than our 4.0.18)
+   - Pre-compiled WASM files available in `/dist` directory
+
+**Pre-Compiled Core Details**:
+- **n64wasm.js** (250KB) - Emscripten loader
+- **n64wasm.wasm** (2.0MB) - Compiled ParaLLEl N64 core
+- Much smaller than Mupen64Plus-Next
+- Tested and working in production at their demo site
+
+**Integration Pattern**:
+```javascript
+// From N64Wasm project - script.js line ~1260
+var Module = {};
+Module['canvas'] = document.getElementById('canvas');
+window['Module'] = Module;
+
+// Load the core
+var script = document.createElement('script');
+script.src = 'n64wasm.js';
+document.head.appendChild(script);
+```
+
+**What Worked**:
+Successfully cloned N64Wasm repository and extracted pre-compiled ParaLLEl core files. These can be integrated into our project as a working MVP alternative to compiling Mupen64Plus-Next from source.
+
+**Code Location**:
+Pre-compiled core files located at:
+```
+/Users/jacobberg/Web/web64/wasm/N64Wasm/dist/n64wasm.js
+/Users/jacobberg/Web/web64/wasm/N64Wasm/dist/n64wasm.wasm
+```
+
+**Learnings**:
+- ParaLLEl N64 is a simpler alternative to Mupen64Plus-Next
+- Older Emscripten versions (2.0.7) may be more stable for complex projects than bleeding-edge (4.0.18)
+- Pre-compiled cores are a valid MVP approach - get it working first, compile from source later
+- N64Wasm project demonstrates successful browser-based N64 emulation
+- The "motorcycle not car" philosophy: use what works, iterate later
+
+**Next Steps**:
+1. Copy pre-compiled core files to our project's `/public` directory
+2. Adapt our TypeScript loader to use ParaLLEl core instead of Mupen64Plus
+3. Test ROM loading with Off Road Challenge
+4. If needed, can compile ParaLLEl from source later with Emscripten 2.0.7
+
+---
+
 ### Issue: Emscripten SDK Installation
 **Date**: 2025-10-26
 **Category**: Compilation

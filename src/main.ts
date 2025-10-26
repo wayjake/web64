@@ -1,5 +1,5 @@
 // N64WASM Emulator Entry Point
-import { checkBrowserCompatibility, loadTestModule } from './emulator/loader';
+import { checkBrowserCompatibility, loadEmulatorCore } from './emulator/loader';
 
 const statusEl = document.getElementById('status') as HTMLParagraphElement;
 const errorEl = document.getElementById('error') as HTMLDivElement;
@@ -39,24 +39,15 @@ async function initEmulator() {
 
     showStatus('Browser compatibility ✓');
 
-    // Load test WebAssembly module
-    showStatus('Loading WebAssembly test module...');
-    const Module = await loadTestModule();
+    // Load ParaLLEl N64 core
+    showStatus('Loading N64 emulator core...');
+    const Module = await loadEmulatorCore(canvas);
 
-    showStatus('WebAssembly module loaded ✓');
+    showStatus('N64 emulator core loaded ✓');
+    console.log('[N64WASM] ParaLLEl N64 core initialized');
+    console.log('[N64WASM] Module object:', Module);
 
-    // Test the exported functions
-    if (Module._add) {
-      const result = Module._add(5, 7);
-      console.log('[N64WASM] Test: 5 + 7 =', result);
-      showStatus(`WASM Test successful: 5 + 7 = ${result} ✓`);
-    }
-
-    if (Module._hello_world) {
-      Module._hello_world();
-    }
-
-    showStatus('✓ Emulator ready! (Test module loaded)');
+    showStatus('✓ N64 Emulator ready!');
 
   } catch (error) {
     showError(`Failed to initialize: ${error instanceof Error ? error.message : String(error)}`);

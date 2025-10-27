@@ -14,7 +14,7 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['n64wasm.js'], // Exclude WebAssembly module from optimization
   },
-  assetsInclude: ['**/*.wasm', '**/*.data'], // Ensure WASM and data files are treated as assets
+  assetsInclude: ['**/*.wasm', '**/*.data', '**/*.n64'], // Ensure WASM, data, and ROM files are treated as assets
   build: {
     target: 'es2020',
     rollupOptions: {

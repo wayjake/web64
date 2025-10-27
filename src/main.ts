@@ -4,6 +4,31 @@ import { loadAssets, loadROM, startEmulator } from './emulator/rom-loader';
 import { createAudioSystem, N64AudioSystem } from './emulator/audio';
 import { StatsToolbar } from './ui/stats-toolbar';
 
+// Limit console log buffer to prevent memory leaks
+const originalConsoleLog = console.log;
+const originalConsoleWarn = console.warn;
+let logCount = 0;
+const MAX_LOGS = 1000; // Clear console after 1000 logs
+
+console.log = (...args: any[]) => {
+  logCount++;
+  if (logCount > MAX_LOGS) {
+    console.clear();
+    logCount = 0;
+    originalConsoleLog('[Console] Cleared to prevent memory leak');
+  }
+  originalConsoleLog(...args);
+};
+
+console.warn = (...args: any[]) => {
+  logCount++;
+  if (logCount > MAX_LOGS) {
+    console.clear();
+    logCount = 0;
+  }
+  originalConsoleWarn(...args);
+};
+
 const statusEl = document.getElementById('status') as HTMLParagraphElement;
 const errorEl = document.getElementById('error') as HTMLDivElement;
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
@@ -93,35 +118,59 @@ async function initEmulator() {
 
     // Initialize audio system - CRITICAL for frame sync!
     showStatus('Initializing audio system...');
-    audioSystem = await createAudioSystem(Module, {
-      sampleRate: 44100,
-      bufferSize: 1024,
-      latencyHint: 'interactive',
-      volume: 0.5
-    });
-
-    console.log('[N64WASM] Audio system initialized:', audioSystem.getStats());
-
-    // Resume audio immediately
-    await audioSystem.resume();
-    console.log('[N64WASM] Audio enabled:', audioSystem.getStats());
+    try {
+      audioSystem = await createAudioSystem(Module, {
+        sampleRate: 44100,
+        bufferSize: 1024,
+        latencyHint: 'interactive',
+        volume: 0.5
+      });
+      console.log('[N64WASM] Audio system initialized:', audioSystem.getStats());
+    } catch (audioError) {
+      console.error('[N64WASM] Audio system initialization failed:', audioError);
+      throw audioError;
+    }
 
     // Initialize stats toolbar
     statsToolbar = new StatsToolbar();
     statsToolbar.setAudioSystem(audioSystem);
 
-    // Start FPS tracking loop
-    function trackFPS() {
+    // Update stats toolbar periodically (audio system provides the actual FPS)
+    setInterval(() => {
       if (statsToolbar) {
-        statsToolbar.recordFrame();
+        statsToolbar.forceUpdate();
       }
-      requestAnimationFrame(trackFPS);
-    }
-    requestAnimationFrame(trackFPS);
+    }, 500); // Update display every 500ms
 
     console.log('[N64WASM] Stats toolbar initialized');
 
-    showStatus('✓ Game running!');
+    // Memory monitoring - log memory usage every 30 seconds to detect leaks
+    if ((performance as any).memory) {
+      setInterval(() => {
+        const mem = (performance as any).memory;
+        const usedMB = (mem.usedJSHeapSize / 1024 / 1024).toFixed(2);
+        const limitMB = (mem.jsHeapSizeLimit / 1024 / 1024).toFixed(2);
+        const percent = ((mem.usedJSHeapSize / mem.jsHeapSizeLimit) * 100).toFixed(1);
+        console.log(`[Memory] ${usedMB} MB / ${limitMB} MB (${percent}%)`);
+
+        // Warn if memory usage is high
+        if (mem.usedJSHeapSize / mem.jsHeapSizeLimit > 0.8) {
+          console.warn('[Memory] WARNING: High memory usage detected!');
+        }
+      }, 30000); // Every 30 seconds
+    }
+
+    // Resume audio - requires user interaction due to browser autoplay policy
+    showStatus('Click anywhere to start...');
+
+    const startAudio = async () => {
+      await audioSystem!.resume();
+      console.log('[N64WASM] Audio enabled:', audioSystem!.getStats());
+      showStatus('✓ Game running!');
+    };
+
+    document.addEventListener('click', startAudio, { once: true });
+    document.addEventListener('keydown', startAudio, { once: true });
 
     // Focus canvas for input - CRITICAL for SDL keyboard events
     canvas.focus();
@@ -143,44 +192,36 @@ async function initEmulator() {
     // Ensure canvas gets focus when clicked
     canvas.addEventListener('click', () => {
       canvas.focus();
-      console.log('[N64WASM] Canvas clicked and focused');
-    });
-
-    // Debug: Log keydown events on canvas to verify SDL receives them
-    canvas.addEventListener('keydown', (e) => {
-      console.log('[Canvas] Keydown:', e.key, '- SDL should receive this');
     });
 
     // Volume control keyboard shortcuts
     document.addEventListener('keydown', (e) => {
       if (!audioSystem || !statsToolbar) return;
 
-      // Volume controls
-      if (e.key === '+' || e.key === '=') {
-        e.preventDefault();
-        const currentVolume = audioSystem.getVolume();
-        const newVolume = Math.min(1.0, currentVolume + 0.1);
-        audioSystem.setVolume(newVolume);
-        statsToolbar.forceUpdate();
-        console.log('[Volume] Increased to:', Math.round(newVolume * 100) + '%');
-      } else if (e.key === '-' || e.key === '_') {
-        e.preventDefault();
-        const currentVolume = audioSystem.getVolume();
-        const newVolume = Math.max(0.0, currentVolume - 0.1);
-        audioSystem.setVolume(newVolume);
-        statsToolbar.forceUpdate();
-        console.log('[Volume] Decreased to:', Math.round(newVolume * 100) + '%');
-      } else if (e.key === 'm' || e.key === 'M') {
-        e.preventDefault();
-        const currentVolume = audioSystem.getVolume();
-        if (currentVolume > 0) {
-          audioSystem.setVolume(0);
-          console.log('[Volume] Muted');
-        } else {
-          audioSystem.setVolume(0.5);
-          console.log('[Volume] Unmuted to 50%');
+      // Volume controls (only handle if not focused on canvas to avoid conflicts)
+      if (document.activeElement !== canvas) {
+        if (e.key === '+' || e.key === '=') {
+          e.preventDefault();
+          const currentVolume = audioSystem.getVolume();
+          const newVolume = Math.min(1.0, currentVolume + 0.1);
+          audioSystem.setVolume(newVolume);
+          statsToolbar.forceUpdate();
+        } else if (e.key === '-' || e.key === '_') {
+          e.preventDefault();
+          const currentVolume = audioSystem.getVolume();
+          const newVolume = Math.max(0.0, currentVolume - 0.1);
+          audioSystem.setVolume(newVolume);
+          statsToolbar.forceUpdate();
+        } else if (e.key === 'm' || e.key === 'M') {
+          e.preventDefault();
+          const currentVolume = audioSystem.getVolume();
+          if (currentVolume > 0) {
+            audioSystem.setVolume(0);
+          } else {
+            audioSystem.setVolume(0.5);
+          }
+          statsToolbar.forceUpdate();
         }
-        statsToolbar.forceUpdate();
       }
     });
 

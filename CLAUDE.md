@@ -345,10 +345,21 @@ See **ROADMAP.md** for detailed task breakdown.
 
 ## Git Commit Guidelines
 
+**IMPORTANT**: Always run `npm run build` before committing to ensure there are no build errors.
+
+### Pre-Commit Checklist:
+1. Run `npm run build` - verify it completes without errors
+2. Review changed files with `git diff`
+3. Test functionality if applicable
+4. Commit with a clear, descriptive message
+
 Keep commits clean and professional:
 
 ```bash
-# Good
+# Pre-commit check
+npm run build
+
+# Good commit messages
 git commit -m "Add WebAssembly loader module"
 git commit -m "Fix audio crackling in AudioWorklet"
 git commit -m "Implement IDBFS save persistence"

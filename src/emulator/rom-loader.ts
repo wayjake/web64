@@ -144,33 +144,20 @@ function writeConfigFile(Module: EmscriptenModule): void {
 
 /**
  * Start the game loop using requestAnimationFrame
+ * NOTE: This is now DISABLED because the audio system drives the frame loop
+ * for better audio/video sync. The audio callback in audio.ts calls _runMainLoop()
  */
-function startGameLoop(Module: EmscriptenModule): void {
-  console.log('[ROM Loader] Starting game loop...');
+function startGameLoop(_Module: EmscriptenModule): void {
+  console.log('[ROM Loader] Game loop driven by audio system (not using separate requestAnimationFrame)');
 
-  let lastFrameTime = performance.now();
-  const targetFrameTime = 1000 / 60; // Target 30fps (N64's typical frame rate)
+  // DISABLED: The audio system's onAudioProcess callback now drives _runMainLoop()
+  // This ensures perfect audio/video sync by tying frames to audio buffer
 
-  const gameLoop = (currentTime: number) => {
-    // Calculate time since last frame
-    const deltaTime = currentTime - lastFrameTime;
-
-    // Only run emulator frame if enough time has passed
-    if (deltaTime >= targetFrameTime) {
-      // Run one frame of the emulator
-      (Module as any)._runMainLoop();
-
-      lastFrameTime = currentTime - (deltaTime % targetFrameTime);
-    }
-
-    // Schedule next frame
-    requestAnimationFrame(gameLoop);
-  };
-
-  // Start the loop
-  requestAnimationFrame(gameLoop);
-
-  console.log('[ROM Loader] Game loop running at ~30fps');
+  // If audio is not working, this would be the fallback:
+  // requestAnimationFrame(() => {
+  //   (_Module as any)._runMainLoop();
+  //   requestAnimationFrame(arguments.callee);
+  // });
 }
 
 /**

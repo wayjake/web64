@@ -35,6 +35,13 @@ export class N64AudioSystem {
   private lastAudioTime: number = 0;
   private clipCount: number = 0;
 
+  // Frame limiting to prevent memory leaks
+  private frameCallCount: number = 0;
+  private lastFrameReset: number = performance.now();
+
+  // Game FPS tracking (actual emulator frames)
+  private gameFps: number = 0;
+
   constructor(private config: AudioConfig = {
     sampleRate: SAMPLE_RATE,
     bufferSize: AUDIO_BUFFER_SIZE,
@@ -125,34 +132,6 @@ export class N64AudioSystem {
   }
 
   /**
-   * Check if we have enough samples buffered to play
-   * Prevents audio crackling by ensuring buffer has data
-   * Now checks for a safety margin beyond just the needed samples
-   */
-  private hasEnoughSamples(safetyMargin: number = 512): boolean {
-    const samplesNeeded = this.config.bufferSize + safetyMargin;
-    let readPositionTemp = this.audioReadPosition;
-    let samplesAvailable = 0;
-
-    // Count available samples in the ring buffer
-    while (samplesAvailable < samplesNeeded * 2) { // *2 for stereo
-      if (this.audioWritePosition !== readPositionTemp) {
-        readPositionTemp += 2; // Stereo: 2 samples (L+R)
-        samplesAvailable += 2;
-
-        // Wrap around ring buffer
-        if (readPositionTemp >= RING_BUFFER_SIZE) {
-          readPositionTemp = 0;
-        }
-      } else {
-        break; // No more samples available
-      }
-    }
-
-    return samplesAvailable >= samplesNeeded * 2;
-  }
-
-  /**
    * Get current buffer fill level (0-1 scale)
    */
   private getBufferFillRatio(): number {
@@ -202,10 +181,18 @@ export class N64AudioSystem {
         (window as any).inputController.update();
       }
 
-      // Run emulator main loop - THIS IS THE KEY!
-      // Tying frame rendering to audio ensures smooth, synchronized playback
+      // Frame rate limiting and FPS tracking
+      const now = performance.now();
+      if (now - this.lastFrameReset > 1000) {
+        this.gameFps = this.frameCallCount; // Store actual FPS before reset
+        this.frameCallCount = 0;
+        this.lastFrameReset = now;
+      }
+
+      // Always run ONE frame per audio callback
       if (this.module?._runMainLoop) {
         this.module._runMainLoop();
+        this.frameCallCount++;
       }
 
       // Get current write position from emulator
@@ -213,19 +200,33 @@ export class N64AudioSystem {
         this.audioWritePosition = this.module._neilGetAudioWritePosition();
       }
 
-      // Adaptive frame running: run more frames if buffer is low
-      const framesToRun = bufferFill < 0.3 ? 2 : 1; // Run 2 frames if buffer < 30% full
-
-      for (let i = 1; i < framesToRun; i++) {
-        if (!this.hasEnoughSamples(256) && this.module?._runMainLoop) {
+      // Run ONE extra frame ONLY if buffer is critically low AND we haven't exceeded 90 FPS
+      // This prevents runaway loops while still allowing catch-up
+      if (bufferFill < 0.15 && this.frameCallCount < 90) {
+        if (this.module?._runMainLoop) {
           this.module._runMainLoop();
-          if (this.module?._neilGetAudioWritePosition) {
-            this.audioWritePosition = this.module._neilGetAudioWritePosition();
-          }
+          this.frameCallCount++;
+        }
+        if (this.module?._neilGetAudioWritePosition) {
+          this.audioWritePosition = this.module._neilGetAudioWritePosition();
         }
       }
 
       let hadUnderrun = false;
+
+      // Check if HEAP buffer was detached (happens when WASM memory grows)
+      // This is a critical fix for memory leaks
+      if (this.audioBufferResampled && this.audioBufferResampled.byteLength === 0) {
+        console.warn('[Audio] Buffer detached, reconnecting to HEAP16');
+        if (this.module?._neilGetSoundBufferResampledAddress && this.module.HEAP16) {
+          const bufferAddress = this.module._neilGetSoundBufferResampledAddress();
+          this.audioBufferResampled = new Int16Array(
+            this.module.HEAP16.buffer,
+            bufferAddress,
+            RING_BUFFER_SIZE
+          );
+        }
+      }
 
       // Fill output buffer with audio samples from ring buffer
       for (let sample = 0; sample < this.config.bufferSize; sample++) {
@@ -269,18 +270,16 @@ export class N64AudioSystem {
         this.audioBackOffCounter = 2; // Skip 2 audio callbacks to buffer
       }
 
-      // Log audio stats occasionally
-      const now = performance.now();
-      if (now - this.lastAudioTime > 5000) { // Every 5 seconds
+      // Log audio stats occasionally (only if there are issues)
+      // Reuse 'now' variable from frame limiting above
+      if (now - this.lastAudioTime > 10000) { // Every 10 seconds (reduced frequency)
         const bufferFillRatio = this.getBufferFillRatio();
-        if (this.audioSkipCount > 0 || this.clipCount > 0 || bufferFillRatio < 0.4) {
-          console.log('[Audio] Stats:', {
+        // Only log if there are significant issues
+        if (this.audioSkipCount > 100 || this.clipCount > 100 || bufferFillRatio < 0.2) {
+          console.warn('[Audio] Performance issues detected:', {
             skipCount: this.audioSkipCount,
             clipCount: this.clipCount,
             bufferFillRatio: (bufferFillRatio * 100).toFixed(1) + '%',
-            bufferFillSamples: Math.abs(this.audioWritePosition - this.audioReadPosition),
-            readPos: this.audioReadPosition,
-            writePos: this.audioWritePosition,
           });
         }
         this.audioSkipCount = 0;
@@ -299,7 +298,7 @@ export class N64AudioSystem {
     if (this.gainNode) {
       this.gainNode.gain.value = Math.max(0, Math.min(1, volume));
       this.config.volume = volume;
-      console.log('[Audio] Volume set to:', volume);
+      // Removed console.log to prevent memory leak from excessive logging
     }
   }
 
@@ -338,6 +337,7 @@ export class N64AudioSystem {
       readPosition: this.audioReadPosition,
       writePosition: this.audioWritePosition,
       bufferFill: Math.abs(this.audioWritePosition - this.audioReadPosition),
+      gameFps: this.gameFps, // Actual emulator FPS
       latency: {
         base: this.audioContext?.baseLatency || 0,
         output: (this.audioContext as any)?.outputLatency || 0,

@@ -9,11 +9,6 @@ export class StatsToolbar {
   private bufferFillElement: HTMLElement;
   private audioStateElement: HTMLElement;
 
-  // FPS tracking
-  private frameCount = 0;
-  private lastFpsUpdate = 0;
-  private currentFps = 0;
-
   // Audio system reference
   private audioSystem: N64AudioSystem | null = null;
 
@@ -33,45 +28,27 @@ export class StatsToolbar {
   }
 
   /**
-   * Call this every frame to track FPS
-   */
-  recordFrame(): void {
-    this.frameCount++;
-
-    const now = performance.now();
-    const elapsed = now - this.lastFpsUpdate;
-
-    // Update FPS display every 500ms
-    if (elapsed >= 500) {
-      this.currentFps = Math.round((this.frameCount / elapsed) * 1000);
-      this.frameCount = 0;
-      this.lastFpsUpdate = now;
-
-      this.updateDisplay();
-    }
-  }
-
-  /**
    * Update all toolbar values
    */
   private updateDisplay(): void {
-    // Update FPS
-    this.fpsElement.textContent = this.currentFps.toString();
-
-    // Update FPS color based on performance
-    if (this.currentFps >= 55) {
-      this.fpsElement.style.color = '#4ade80'; // Green - good
-    } else if (this.currentFps >= 45) {
-      this.fpsElement.style.color = '#fbbf24'; // Yellow - okay
-    } else if (this.currentFps >= 30) {
-      this.fpsElement.style.color = '#fb923c'; // Orange - poor
-    } else {
-      this.fpsElement.style.color = '#ef4444'; // Red - bad
-    }
-
     // Update audio stats if available
     if (this.audioSystem) {
       const stats = this.audioSystem.getStats();
+
+      // Update FPS from actual game frames (not requestAnimationFrame)
+      const gameFps = stats.gameFps || 0;
+      this.fpsElement.textContent = gameFps.toString();
+
+      // Update FPS color based on performance
+      if (gameFps >= 55) {
+        this.fpsElement.style.color = '#4ade80'; // Green - good
+      } else if (gameFps >= 45) {
+        this.fpsElement.style.color = '#fbbf24'; // Yellow - okay
+      } else if (gameFps >= 30) {
+        this.fpsElement.style.color = '#fb923c'; // Orange - poor
+      } else {
+        this.fpsElement.style.color = '#ef4444'; // Red - bad
+      }
 
       // Volume
       const volumePercent = Math.round(stats.volume * 100);

@@ -9,7 +9,6 @@ const canvas = document.getElementById('canvas') as HTMLCanvasElement;
 const startButton = document.getElementById('startButton') as HTMLButtonElement;
 
 let audioSystem: N64AudioSystem | null = null;
-let emulatorReady = false;
 
 function showStatus(message: string) {
   if (statusEl) {
@@ -105,7 +104,6 @@ async function initEmulator() {
     // Show start button for user to click (required for audio)
     showStatus('Click the button to enable audio');
     startButton.style.display = 'block';
-    emulatorReady = true;
 
     // Wait for user click to resume audio
     startButton.addEventListener('click', async () => {

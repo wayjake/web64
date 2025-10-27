@@ -133,11 +133,11 @@ export function initializeKeyboardInput(Module: EmscriptenModule, canvas: HTMLCa
   console.log('[Input] SDL keys:', SDL ? Object.keys(SDL) : 'SDL is undefined');
 
   // Check Module for SDL-related functions
-  console.log('[Input] Module._SDL_PushEvent:', typeof Module._SDL_PushEvent);
+  console.log('[Input] Module._SDL_PushEvent:', typeof (Module as any)._SDL_PushEvent);
   console.log('[Input] Module.SDL:', (Module as any).SDL);
 
   // Check if there's a keyboard state array we can write to directly
-  if (Module.HEAP8) {
+  if ((Module as any).HEAP8) {
     console.log('[Input] Module.HEAP8 available - can potentially write to SDL keyboard state');
   }
 

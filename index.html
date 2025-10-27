@@ -88,6 +88,45 @@
         font-weight: bold;
         color: #667eea;
       }
+
+      /* Stats Toolbar */
+      .toolbar {
+        display: flex;
+        justify-content: center;
+        gap: 2rem;
+        margin: 1rem auto;
+        padding: 0.75rem 1.5rem;
+        background: rgba(102, 126, 234, 0.1);
+        border: 1px solid #667eea;
+        border-radius: 8px;
+        max-width: 800px;
+        font-family: 'Courier New', monospace;
+      }
+
+      .toolbar-section {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+      }
+
+      .toolbar-label {
+        color: #667eea;
+        font-weight: bold;
+        font-size: 0.9rem;
+      }
+
+      .toolbar-value {
+        color: #fff;
+        font-size: 0.9rem;
+        min-width: 60px;
+      }
+
+      @media (max-width: 768px) {
+        .toolbar {
+          flex-direction: column;
+          gap: 0.5rem;
+        }
+      }
     </style>
   </head>
   <body>
@@ -95,6 +134,31 @@
       <h1>N64WASM</h1>
       <p id="status">Initializing emulator...</p>
       <canvas id="canvas" width="640" height="480" tabindex="0"></canvas>
+
+      <!-- Stats Toolbar -->
+      <div id="toolbar" class="toolbar">
+        <div class="toolbar-section">
+          <span class="toolbar-label">FPS:</span>
+          <span class="toolbar-value" id="fps">--</span>
+        </div>
+        <div class="toolbar-section">
+          <span class="toolbar-label">Volume:</span>
+          <span class="toolbar-value" id="volume">--</span>
+        </div>
+        <div class="toolbar-section">
+          <span class="toolbar-label">Sample Rate:</span>
+          <span class="toolbar-value" id="sampleRate">--</span>
+        </div>
+        <div class="toolbar-section">
+          <span class="toolbar-label">Buffer Fill:</span>
+          <span class="toolbar-value" id="bufferFill">--</span>
+        </div>
+        <div class="toolbar-section">
+          <span class="toolbar-label">Audio State:</span>
+          <span class="toolbar-value" id="audioState">--</span>
+        </div>
+      </div>
+
       <div id="error"></div>
 
       <div class="controls">

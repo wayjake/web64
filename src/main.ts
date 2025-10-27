@@ -2,12 +2,14 @@
 import { checkBrowserCompatibility, loadEmulatorCore } from './emulator/loader';
 import { loadAssets, loadROM, startEmulator } from './emulator/rom-loader';
 import { createAudioSystem, N64AudioSystem } from './emulator/audio';
+import { StatsToolbar } from './ui/stats-toolbar';
 
 const statusEl = document.getElementById('status') as HTMLParagraphElement;
 const errorEl = document.getElementById('error') as HTMLDivElement;
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
 
 let audioSystem: N64AudioSystem | null = null;
+let statsToolbar: StatsToolbar | null = null;
 
 function showStatus(message: string) {
   if (statusEl) {
@@ -104,6 +106,21 @@ async function initEmulator() {
     await audioSystem.resume();
     console.log('[N64WASM] Audio enabled:', audioSystem.getStats());
 
+    // Initialize stats toolbar
+    statsToolbar = new StatsToolbar();
+    statsToolbar.setAudioSystem(audioSystem);
+
+    // Start FPS tracking loop
+    function trackFPS() {
+      if (statsToolbar) {
+        statsToolbar.recordFrame();
+      }
+      requestAnimationFrame(trackFPS);
+    }
+    requestAnimationFrame(trackFPS);
+
+    console.log('[N64WASM] Stats toolbar initialized');
+
     showStatus('✓ Game running!');
 
     // Focus canvas for input - CRITICAL for SDL keyboard events
@@ -134,13 +151,36 @@ async function initEmulator() {
       console.log('[Canvas] Keydown:', e.key, '- SDL should receive this');
     });
 
-    // Also log document-level events to compare
-    let lastLogTime = 0;
+    // Volume control keyboard shortcuts
     document.addEventListener('keydown', (e) => {
-      const now = Date.now();
-      if (now - lastLogTime > 100) {  // Throttle logging
-        console.log('[Document] Keydown:', e.key, '- active element:', document.activeElement?.tagName);
-        lastLogTime = now;
+      if (!audioSystem || !statsToolbar) return;
+
+      // Volume controls
+      if (e.key === '+' || e.key === '=') {
+        e.preventDefault();
+        const currentVolume = audioSystem.getVolume();
+        const newVolume = Math.min(1.0, currentVolume + 0.1);
+        audioSystem.setVolume(newVolume);
+        statsToolbar.forceUpdate();
+        console.log('[Volume] Increased to:', Math.round(newVolume * 100) + '%');
+      } else if (e.key === '-' || e.key === '_') {
+        e.preventDefault();
+        const currentVolume = audioSystem.getVolume();
+        const newVolume = Math.max(0.0, currentVolume - 0.1);
+        audioSystem.setVolume(newVolume);
+        statsToolbar.forceUpdate();
+        console.log('[Volume] Decreased to:', Math.round(newVolume * 100) + '%');
+      } else if (e.key === 'm' || e.key === 'M') {
+        e.preventDefault();
+        const currentVolume = audioSystem.getVolume();
+        if (currentVolume > 0) {
+          audioSystem.setVolume(0);
+          console.log('[Volume] Muted');
+        } else {
+          audioSystem.setVolume(0.5);
+          console.log('[Volume] Unmuted to 50%');
+        }
+        statsToolbar.forceUpdate();
       }
     });
 

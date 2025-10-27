@@ -6,7 +6,6 @@ import { createAudioSystem, N64AudioSystem } from './emulator/audio';
 const statusEl = document.getElementById('status') as HTMLParagraphElement;
 const errorEl = document.getElementById('error') as HTMLDivElement;
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
-const startButton = document.getElementById('startButton') as HTMLButtonElement;
 
 let audioSystem: N64AudioSystem | null = null;
 
@@ -101,25 +100,15 @@ async function initEmulator() {
 
     console.log('[N64WASM] Audio system initialized:', audioSystem.getStats());
 
-    // Show start button for user to click (required for audio)
-    showStatus('Click the button to enable audio');
-    startButton.style.display = 'block';
+    // Resume audio immediately
+    await audioSystem.resume();
+    console.log('[N64WASM] Audio enabled:', audioSystem.getStats());
 
-    // Wait for user click to resume audio
-    startButton.addEventListener('click', async () => {
-      startButton.style.display = 'none';
+    showStatus('✓ Game running!');
 
-      showStatus('Enabling audio...');
-      await audioSystem!.resume();
-
-      console.log('[N64WASM] Audio enabled:', audioSystem!.getStats());
-
-      showStatus('✓ Game running with audio! (Click canvas to focus)');
-
-      // Focus canvas for input - CRITICAL for SDL keyboard events
-      canvas.focus();
-      console.log('[N64WASM] Canvas focused - keyboard input should work now');
-    }, { once: true });
+    // Focus canvas for input - CRITICAL for SDL keyboard events
+    canvas.focus();
+    console.log('[N64WASM] Canvas focused - keyboard input should work now');
 
     // Log canvas state
     console.log('[N64WASM] Canvas:', {

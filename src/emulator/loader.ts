@@ -11,6 +11,7 @@ export interface EmscriptenModule {
   // Memory and file system
   FS?: any;
   IDBFS?: any;
+  HEAP16?: Int16Array;
 
   // Core functions (will be populated by Emscripten)
   ccall?: (name: string, returnType: string, argTypes: string[], args: any[]) => any;
@@ -21,6 +22,13 @@ export interface EmscriptenModule {
   _add?: (a: number, b: number) => number;
   _hello_world?: () => void;
   _main?: () => number;
+
+  // N64 Audio functions (from ParaLLEl N64 core)
+  _runMainLoop?: () => void;
+  _neilGetSoundBufferResampledAddress?: () => number;
+  _neilGetAudioWritePosition?: () => number;
+  _neil_toast_message?: (message: string) => void;
+  _toggleFPS?: (show: number) => void;
 }
 
 export type ModuleFactory = (config: Partial<EmscriptenModule>) => Promise<EmscriptenModule>;
@@ -66,6 +74,14 @@ export async function loadEmulatorCore(canvas: HTMLCanvasElement): Promise<Emscr
     // Set up the Module config on the window before loading the script
     (window as any).Module = {
       canvas,
+      // CRITICAL: Tell SDL to capture keyboard events from the canvas
+      preRun: [(mod: any) => {
+        // Set SDL environment variable to capture keyboard from canvas
+        if (mod.ENV) {
+          mod.ENV.SDL_EMSCRIPTEN_KEYBOARD_ELEMENT = '#canvas';
+          console.log('[Loader] SDL configured to capture keyboard from canvas');
+        }
+      }],
       onRuntimeInitialized: function() {
         console.log('[Loader] Emulator core initialized');
 
@@ -81,6 +97,13 @@ export async function loadEmulatorCore(canvas: HTMLCanvasElement): Promise<Emscr
           // Focus the canvas so it can receive keyboard input
           canvas.focus();
           canvas.setAttribute('tabindex', '0');
+
+          // Make canvas capture all keyboard events
+          canvas.addEventListener('keydown', (e) => {
+            e.preventDefault();  // Prevent default browser actions
+          });
+
+          console.log('[Loader] Canvas configured for input');
 
           resolve(mod);
         }, 100);

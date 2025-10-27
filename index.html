@@ -94,35 +94,70 @@
     <div id="app">
       <h1>N64WASM</h1>
       <p id="status">Initializing emulator...</p>
+      <button id="startButton" style="display: none; padding: 1rem 2rem; font-size: 1.2rem; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer; margin: 1rem;">
+        Click to Start with Audio
+      </button>
       <canvas id="canvas" width="640" height="480" tabindex="0"></canvas>
       <div id="error"></div>
 
       <div class="controls">
-        <h3>Controls</h3>
+        <h3>Game Controls</h3>
         <table>
           <tr>
             <td>Arrow Keys</td>
-            <td>D-Pad</td>
+            <td>Analog Stick</td>
           </tr>
           <tr>
-            <td>Z</td>
+            <td>Y / H / B / N</td>
+            <td>D-Pad (Up/Down/Left/Right)</td>
+          </tr>
+          <tr>
+            <td>D</td>
             <td>A Button</td>
           </tr>
           <tr>
-            <td>X</td>
+            <td>S</td>
             <td>B Button</td>
           </tr>
           <tr>
             <td>A</td>
+            <td>Z Trigger</td>
+          </tr>
+          <tr>
+            <td>Q</td>
             <td>L Trigger</td>
           </tr>
           <tr>
-            <td>S</td>
+            <td>E</td>
             <td>R Trigger</td>
+          </tr>
+          <tr>
+            <td>I / K / J / L</td>
+            <td>C Buttons (Up/Down/Left/Right)</td>
           </tr>
           <tr>
             <td>Enter</td>
             <td>Start</td>
+          </tr>
+        </table>
+
+        <h3 style="margin-top: 2rem;">Audio Controls</h3>
+        <table>
+          <tr>
+            <td>M</td>
+            <td>Mute / Unmute</td>
+          </tr>
+          <tr>
+            <td>+ / =</td>
+            <td>Volume Up</td>
+          </tr>
+          <tr>
+            <td>-</td>
+            <td>Volume Down</td>
+          </tr>
+          <tr>
+            <td>I</td>
+            <td>Audio Info</td>
           </tr>
         </table>
       </div>

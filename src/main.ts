@@ -1,10 +1,15 @@
 // N64WASM Emulator Entry Point
 import { checkBrowserCompatibility, loadEmulatorCore } from './emulator/loader';
 import { loadAssets, loadROM, startEmulator } from './emulator/rom-loader';
+import { createAudioSystem, N64AudioSystem } from './emulator/audio';
 
 const statusEl = document.getElementById('status') as HTMLParagraphElement;
 const errorEl = document.getElementById('error') as HTMLDivElement;
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
+const startButton = document.getElementById('startButton') as HTMLButtonElement;
+
+let audioSystem: N64AudioSystem | null = null;
+let emulatorReady = false;
 
 function showStatus(message: string) {
   if (statusEl) {
@@ -60,19 +65,63 @@ async function initEmulator() {
     showStatus(`ROM loaded: ${romInfo.name} (${(romInfo.size / 1024 / 1024).toFixed(2)} MB)`);
     console.log('[N64WASM] ROM info:', romInfo);
 
-    // Initialize input controller (from N64Wasm)
+    // Initialize InputController (from N64Wasm)
+    // The compiled binary reads input from window.inputController
+    showStatus('Initializing input controller...');
     if (typeof (window as any).InputController === 'function') {
       (window as any).inputController = new (window as any).InputController();
-      console.log('[N64WASM] Input controller initialized');
+      (window as any).inputController.setupGamePad();
+      console.log('[N64WASM] ✓ InputController initialized');
+
+      // Start update loop for InputController (processes gamepad)
+      setInterval(() => {
+        if ((window as any).inputController) {
+          (window as any).inputController.update();
+        }
+      }, 16); // ~60fps
+
+      showStatus('Input controller ready ✓');
     } else {
-      console.warn('[N64WASM] InputController not available, keyboard input may not work');
+      console.warn('[N64WASM] InputController not available - keyboard may not work');
+      showStatus('Warning: InputController not loaded');
     }
 
-    // Start the emulator
+    // Start the emulator first so we can see the game
     showStatus('Starting emulator...');
     startEmulator(Module, romInfo.path);
+    showStatus('Game running (audio starting...)');
 
-    showStatus('✓ Game running!');
+    // Initialize audio system - CRITICAL for frame sync!
+    showStatus('Initializing audio system...');
+    audioSystem = await createAudioSystem(Module, {
+      sampleRate: 44100,
+      bufferSize: 1024,
+      latencyHint: 'interactive',
+      volume: 0.5
+    });
+
+    console.log('[N64WASM] Audio system initialized:', audioSystem.getStats());
+
+    // Show start button for user to click (required for audio)
+    showStatus('Click the button to enable audio');
+    startButton.style.display = 'block';
+    emulatorReady = true;
+
+    // Wait for user click to resume audio
+    startButton.addEventListener('click', async () => {
+      startButton.style.display = 'none';
+
+      showStatus('Enabling audio...');
+      await audioSystem!.resume();
+
+      console.log('[N64WASM] Audio enabled:', audioSystem!.getStats());
+
+      showStatus('✓ Game running with audio! (Click canvas to focus)');
+
+      // Focus canvas for input - CRITICAL for SDL keyboard events
+      canvas.focus();
+      console.log('[N64WASM] Canvas focused - keyboard input should work now');
+    }, { once: true });
 
     // Log canvas state
     console.log('[N64WASM] Canvas:', {
@@ -81,13 +130,31 @@ async function initEmulator() {
       context: canvas.getContext('webgl2') ? 'WebGL2 available' : 'No WebGL2'
     });
 
-    // Debug: Log keyboard events to verify they're being captured
-    document.addEventListener('keydown', (e) => {
-      console.log('[Input Debug] Keydown:', e.key, 'Code:', e.code, 'KeyCode:', e.keyCode);
+    // Debug: Check if SDL is receiving events
+    console.log('[N64WASM] SDL info:', {
+      SDL: typeof (window as any).SDL !== 'undefined' ? 'available' : 'not available',
+      Module: typeof Module !== 'undefined' ? 'available' : 'not available'
     });
 
-    document.addEventListener('keyup', (e) => {
-      console.log('[Input Debug] Keyup:', e.key, 'Code:', e.code);
+    // Ensure canvas gets focus when clicked
+    canvas.addEventListener('click', () => {
+      canvas.focus();
+      console.log('[N64WASM] Canvas clicked and focused');
+    });
+
+    // Debug: Log keydown events on canvas to verify SDL receives them
+    canvas.addEventListener('keydown', (e) => {
+      console.log('[Canvas] Keydown:', e.key, '- SDL should receive this');
+    });
+
+    // Also log document-level events to compare
+    let lastLogTime = 0;
+    document.addEventListener('keydown', (e) => {
+      const now = Date.now();
+      if (now - lastLogTime > 100) {  // Throttle logging
+        console.log('[Document] Keydown:', e.key, '- active element:', document.activeElement?.tagName);
+        lastLogTime = now;
+      }
     });
 
   } catch (error) {
@@ -100,14 +167,19 @@ function loadInputController(): Promise<void> {
   return new Promise((resolve, reject) => {
     const script = document.createElement('script');
     script.src = '/input_controller.js';
+    script.type = 'text/javascript';
+
     script.onload = () => {
       console.log('[N64WASM] input_controller.js loaded');
-      resolve();
+      // Wait a bit for class definitions to be available
+      setTimeout(resolve, 100);
     };
-    script.onerror = () => {
-      console.error('[N64WASM] Failed to load input_controller.js');
+
+    script.onerror = (error) => {
+      console.error('[N64WASM] Failed to load input_controller.js:', error);
       reject(new Error('Failed to load input_controller.js'));
     };
+
     document.head.appendChild(script);
   });
 }

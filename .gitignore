@@ -16,10 +16,10 @@ dist/
 .env.local
 .env.*.local
 
-# ROM files (do NOT commit ROMs)
-*.z64
-*.n64
-*.v64
+# WASM source repositories (keep these local only)
+wasm/GLideN64/
+wasm/N64Wasm/
+wasm/mupen64plus-libretro-nx/
 
 # WASM build artifacts
 public/core.js

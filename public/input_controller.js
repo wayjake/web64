@@ -385,7 +385,7 @@ class InputController {
 
     update() {
         this.processGamepad();
-       
+
         //a hack - need to refactor
         if (this.Remap_Check) {
             if (this.Key_Last != '' || this.Joy_Last) {
@@ -395,3 +395,8 @@ class InputController {
         }
     }
 }
+
+// Export classes to window object so they're globally accessible
+window.GamePadState = GamePadState;
+window.KeyMappings = KeyMappings;
+window.InputController = InputController;
